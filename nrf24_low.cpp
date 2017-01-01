@@ -5,15 +5,14 @@
 
 #define ce_pin 9
 #define csn_pin 10
-#define low 0
-#define high 1
+
 
 void nRF24L01_HW_Init(void){
 	
 	pinMode(ce_pin,OUTPUT);
 	pinMode(csn_pin,OUTPUT);
-	ce(LOW);
-	csn(HIGH);
+	nRF24L01_CE(LOW);
+	nRF24L01_NSS(HIGH);
 
 	SPI.setBitOrder(MSBFIRST);
 	SPI.setDataMode(SPI_MODE0);
@@ -53,4 +52,32 @@ uint8_t nRF24L01_Write_Regs(uint8_t reg, uint8_t *buf, uint8_t len){
 }
 uint8_t nRF24L01_SPI_Send_Byte(uint8_t data){
 	return SPI.transfer(data);
+}
+
+uint8_t nRF24L01_write_payload(uint8_t* buf, uint8_t len)
+{
+	uint8_t status;
+
+	nRF24L01_NSS(LOW);
+	status = nRF24L01_SPI_Send_Byte( W_TX_PAYLOAD );
+	while ( len-- )
+		nRF24L01_SPI_Send_Byte(*buf++);
+	nRF24L01_NSS(HIGH);
+
+  return status;
+}
+
+/****************************************************************************/
+
+uint8_t nRF24L01_read_payload(uint8_t* buf, uint8_t len)
+{
+  uint8_t status;
+  
+  nRF24L01_NSS(LOW);
+  status = nRF24L01_SPI_Send_Byte( R_RX_PAYLOAD );
+  while ( len-- )
+    *buf++ = nRF24L01_SPI_Send_Byte(0xff);
+  nRF24L01_NSS(HIGH);
+
+  return status;
 }

@@ -1,7 +1,8 @@
 #include "nrf24.h"
-
+#include "math.h"
+#include "arduino.h"
 #define _BV(n) (1 << n)
-
+//#define min(x,y) (x < y ? x : y)
 #define RF24_PA_MAX 3
 #define RF24_PA_HIGH 2
 #define RF24_PA_LOW 1
@@ -42,9 +43,9 @@ uint8_t nRF24L01_get_status(void)
 {
   uint8_t status;
 
-  csn(LOW);
-  status = SPI.transfer( NOP );
-  csn(HIGH);
+  nRF24L01_NSS(LOW);
+  status = nRF24L01_SPI_Send_Byte( NOP );
+  nRF24L01_NSS(HIGH);
 
   return status;
 }
@@ -102,20 +103,15 @@ void nRF24L01_begin(void)
 	nRF24L01_flush_rx();
 	nRF24L01_flush_tx();
 }
-void nRF24L01_startListening(void)
+void nRF24L01_RX_mode(void)
 {
 	uint8_t tmp;
-	nRF24L01_Read_Regs((CONFIG) | _BV(PWR_UP) | _BV(PRIM_RX), &tmp, 1);
+	nRF24L01_Read_Regs(CONFIG , &tmp, 1);
+	tmp |= _BV(PWR_UP) | _BV(PRIM_RX); 
 	nRF24L01_Write_Regs(CONFIG, &tmp, 1);
 	tmp = _BV(RX_DR) | _BV(TX_DS) | _BV(MAX_RT);
 	nRF24L01_Write_Regs(STATUS, &tmp, 1);
 
-//!TODO read spec and change something
-	// Restore the pipe0 adddress, if exists
-	if (pipe_reading_address[0])
-	write_register(RX_ADDR_P0, reinterpret_cast<const uint8_t*>(&pipe0_reading_address), 5);
-
-	// Flush buffers
 	nRF24L01_flush_rx();
 	nRF24L01_flush_tx();
 
@@ -125,7 +121,7 @@ void nRF24L01_startListening(void)
 	// wait for the radio to come up (130us actually only needed)
 	nRF24L01_Delay_us(130);
 }
-void nRF24L01_stopListening(void)
+void nRF24L01_Standby_Mode(void)
 {
 	nRF24L01_CE(LOW);
 	nRF24L01_flush_rx();
@@ -172,12 +168,13 @@ uint8_t nRF24L01_available(uint8_t * pipe_num)
 
     // ??? Should this REALLY be cleared now?  Or wait until we
     // actually READ the payload?
-
-    
+  	status = _BV(RX_DR);
+    nRF24L01_Write_Regs(STATUS, &status,1);
     // Handle ack payload receipt
     if ( status & _BV(TX_DS) )
     {
-      nRF24L01_Write_Regs(STATUS,_BV(TX_DS),1);
+    	status = _BV(TX_DS);
+    	nRF24L01_Write_Regs(STATUS,&status,1);
     }
   }
 
@@ -228,48 +225,37 @@ uint8_t nRF24L01_getPALevel(void)
 
 uint8_t nRF24L01_setDataRate(uint8_t speed)
 {
-  uint8_t result = 0;
-  uint8_t setup;
-  nRF24L01_Read_Regs(RF_SETUP, &setup,1);
+	uint8_t result = 0;
+	uint8_t setup;
+	nRF24L01_Read_Regs(RF_SETUP, &setup,1);
 
-  // HIGH and LOW '00' is 1Mbs - our default
-  setup &= ~(_BV(RF_DR_LOW) | _BV(RF_DR_HIGH)) ;
+	// HIGH and LOW '00' is 1Mbs - our default
+	setup &= ~(_BV(RF_DR_LOW) | _BV(RF_DR_HIGH)) ;
 
-  if( speed == RF24_250KBPS )
-  {
-    // Must set the RF_DR_LOW to 1; RF_DR_HIGH (used to be RF_DR) is already 0
-    // Making it '10'.
-    setup |= _BV( RF_DR_LOW ) ;
-  }
-  else
-  {
-    // Set 2Mbs, RF_DR (RF_DR_HIGH) is set 1
-    // Making it '01'
-    if ( speed == RF24_2MBPS )
-    {
-      setup |= _BV(RF_DR_HIGH);
-    }
-    else
-    {
-      // 1Mbs
-      wide_band = false ;
-    }
-  }
+	if( speed == RF24_250KBPS )
+	{
+		// Must set the RF_DR_LOW to 1; RF_DR_HIGH (used to be RF_DR) is already 0
+		// Making it '10'.
+		setup |= _BV( RF_DR_LOW ) ;
+	}
+	else
+	{
+	// Set 2Mbs, RF_DR (RF_DR_HIGH) is set 1
+	// Making it '01'
+		if ( speed == RF24_2MBPS )
+		{
+			setup |= _BV(RF_DR_HIGH);
+		}
+	}
 	nRF24L01_Write_Regs(RF_SETUP, &setup, 1);
 
-  // Verify our result
+	// Verify our result
 	uint8_t tmp;
 	nRF24L01_Read_Regs(RF_SETUP, &tmp,1);
-  if ( tmp == setup )
-  {
-    result = true;
-  }
-  else
-  {
-    wide_band = false;
-  }
+	if ( tmp == setup )
+		result = true;
 
-  return result;
+	return result;
 }
 
 /****************************************************************************/
@@ -345,12 +331,43 @@ uint8_t nRF24L01_getCRCLength(void)
 }
 
 /****************************************************************************/
-
-bool nRF24L01_read_payload( uint8_t * buf, uint8_t len )
+static const uint8_t child_pipe[] =
 {
-  // Fetch the payload
-  read_payload( buf, len );
+  RX_ADDR_P0, RX_ADDR_P1, RX_ADDR_P2, RX_ADDR_P3, RX_ADDR_P4, RX_ADDR_P5
+};
+static const uint8_t child_payload_size[] =
+{
+  RX_PW_P0, RX_PW_P1, RX_PW_P2, RX_PW_P3, RX_PW_P4, RX_PW_P5
+};
+static const uint8_t child_pipe_enable[] =
+{
+  ERX_P0, ERX_P1, ERX_P2, ERX_P3, ERX_P4, ERX_P5
+};
 
-  // was this the last of the data available?
-  return read_register(FIFO_STATUS) & _BV(RX_EMPTY);
+
+void nRF24L01_set_reading_pipe( uint8_t child, uint64_t address)
+{
+// If this is pipe 0, cache the address.  This is needed because
+  // openWritingPipe() will overwrite the pipe 0 address, so
+  // startListening() will have to restore it.
+  uint8_t * tmp = (uint8_t *) &address;
+
+  if (child <= 6)
+  {
+    // For pipes 2-5, only write the LSB
+    if ( child < 2 )
+      nRF24L01_Write_Regs(child_pipe[child], tmp, 5);
+    else
+      nRF24L01_Write_Regs(child_pipe[child], tmp, 1);
+    nRF24L01_Write_Regs(child_payload_size[child], &payload_size, 1);
+
+    // Note it would be more efficient to set all of the bits for all open
+    // pipes at once.  However, I thought it would make the calling code
+    // more simple to do it this way.
+    uint8_t tmp2;
+    nRF24L01_Read_Regs(EN_RXADDR, &tmp2, 1);
+    tmp2 |= _BV(child_pipe_enable[child]);
+    nRF24L01_Write_Regs(EN_RXADDR, &tmp2, 1);
+  }
 }
+
