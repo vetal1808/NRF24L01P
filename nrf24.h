@@ -120,4 +120,25 @@
 #define RF_PWR_HIGH 2
 
 
+
+uint8_t nRF24L01_flush_rx(void);
+uint8_t nRF24L01_flush_tx(void);
+uint8_t nRF24L01_get_status(void);
+void nRF24L01_setChannel(uint8_t channel);
+void nRF24L01_setPayloadSize(uint8_t size);
+uint8_t nRF24L01_getPayloadSize(void);
+void nRF24L01_begin(void);
+void nRF24L01_RX_mode(void);
+void nRF24L01_Standby_Mode(void);
+void nRF24L01_powerDown(void);
+void nRF24L01_powerUp(void);
+uint8_t nRF24L01_TX_mode();
+uint8_t nRF24L01_available(uint8_t * pipe_num);
+void nRF24L01_setPALevel(uint8_t level);
+uint8_t nRF24L01_getPALevel(void);
+uint8_t nRF24L01_setDataRate(uint8_t speed);
+uint8_t nRF24L01_getDataRate( void );
+void nRF24L01_setCRCLength(uint8_t length);
+uint8_t nRF24L01_getCRCLength(void);
+void nRF24L01_set_reading_pipe( uint8_t child, uint64_t address);
 #endif
