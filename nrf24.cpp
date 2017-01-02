@@ -344,12 +344,12 @@ static const uint8_t child_pipe_enable[] =
   ERX_P0, ERX_P1, ERX_P2, ERX_P3, ERX_P4, ERX_P5
 };
 
-
 void nRF24L01_set_reading_pipe( uint8_t child, uint64_t address)
 {
 // If this is pipe 0, cache the address.  This is needed because
   // openWritingPipe() will overwrite the pipe 0 address, so
   // startListening() will have to restore it.
+
   uint8_t * tmp = (uint8_t *) &address;
 
   if (child <= 6)
@@ -368,6 +368,7 @@ void nRF24L01_set_reading_pipe( uint8_t child, uint64_t address)
     nRF24L01_Read_Regs(EN_RXADDR, &tmp2, 1);
     tmp2 |= _BV(child_pipe_enable[child]);
     nRF24L01_Write_Regs(EN_RXADDR, &tmp2, 1);
+
   }
 }
 
