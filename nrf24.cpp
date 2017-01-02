@@ -106,7 +106,8 @@ void nRF24L01_begin(void)
 void nRF24L01_RX_mode(void)
 {
 	uint8_t tmp;
-	nRF24L01_Read_Regs((CONFIG) | _BV(PWR_UP) | _BV(PRIM_RX), &tmp, 1);
+	nRF24L01_Read_Regs(CONFIG , &tmp, 1);
+	tmp |= _BV(PWR_UP) | _BV(PRIM_RX); 
 	nRF24L01_Write_Regs(CONFIG, &tmp, 1);
 	tmp = _BV(RX_DR) | _BV(TX_DS) | _BV(MAX_RT);
 	nRF24L01_Write_Regs(STATUS, &tmp, 1);
@@ -167,12 +168,13 @@ uint8_t nRF24L01_available(uint8_t * pipe_num)
 
     // ??? Should this REALLY be cleared now?  Or wait until we
     // actually READ the payload?
-
-    
+  	status = _BV(RX_DR);
+    nRF24L01_Write_Regs(STATUS, &status,1);
     // Handle ack payload receipt
     if ( status & _BV(TX_DS) )
     {
-      nRF24L01_Write_Regs(STATUS,_BV(TX_DS),1);
+    	status = _BV(TX_DS);
+    	nRF24L01_Write_Regs(STATUS,&status,1);
     }
   }
 
@@ -342,13 +344,14 @@ static const uint8_t child_pipe_enable[] =
   ERX_P0, ERX_P1, ERX_P2, ERX_P3, ERX_P4, ERX_P5
 };
 
-
 void nRF24L01_set_reading_pipe( uint8_t child, uint64_t address)
 {
 // If this is pipe 0, cache the address.  This is needed because
   // openWritingPipe() will overwrite the pipe 0 address, so
   // startListening() will have to restore it.
-  uint8_t * tmp = (uint8_t *) &address; 
+
+  uint8_t * tmp = (uint8_t *) &address;
+
   if (child <= 6)
   {
     // For pipes 2-5, only write the LSB
@@ -362,9 +365,10 @@ void nRF24L01_set_reading_pipe( uint8_t child, uint64_t address)
     // pipes at once.  However, I thought it would make the calling code
     // more simple to do it this way.
     uint8_t tmp2;
-    nRF24L01_Read_Regs(EN_RXADDR, tmp2, 1);
+    nRF24L01_Read_Regs(EN_RXADDR, &tmp2, 1);
     tmp2 |= _BV(child_pipe_enable[child]);
-    nRF24L01_Write_Regs(EN_RXADDR, tmp2, 1);
+    nRF24L01_Write_Regs(EN_RXADDR, &tmp2, 1);
+
   }
 }
 
